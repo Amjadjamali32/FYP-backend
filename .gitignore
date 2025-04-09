@@ -1,0 +1,64 @@
+# ================================
+# Node.js & Dependencies
+# ================================
+node_modules/
+npm-debug.log
+package-lock.json
+src/config/serviceAccountKey.json
+
+# ================================
+# Environment & Secrets
+# ================================
+.env
+
+# ================================
+# IDE & Editor Files
+# ================================
+.vscode/
+.idea/
+
+# ================================
+# Build & Runtime Artifacts
+# ================================
+dist/
+build/
+coverage/
+*.exe
+*.out
+*.pid
+logs/
+*.log
+*.seed
+
+# ================================
+# OS-Specific Files
+# ================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ================================
+# Testing & Debugging
+# ================================
+.nyc_output/
+jest.config.js
+/mock-data/
+/test-results/
+
+# ================================
+# AI/ML Models (Large Files)
+# ================================
+*.bin
+*.h5
+*.pt
+*.pkl
+*.joblib
+
+# ================================
+# Docker & Deployment
+# ================================
+docker-compose*.yml
+.dockerignore
+**/.docker/**
+**/docker-compose.override.yml
+**/docker-compose.prod.yml
