@@ -1,32 +1,44 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import { fileUploadMiddleware } from "./src/middlewares/multer.js"
+import { fileUploadMiddleware } from "./src/middlewares/multer.js";
 
 const app = express();
 
-// Middleware for CORS
-app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',  
-    credentials: true,
-}));
+// ✅ Define allowed origins (You can also use env var here)
+const allowedOrigins = [
+  'https://crime-gpt.netlify.app/',
+  'http://localhost:5173' // optional: for local development
+];
 
-// Body parsing middleware
+// ✅ Define CORS options once
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
+// ✅ Apply CORS middleware only once
+app.use(cors(corsOptions));
+
+// ✅ Handle preflight OPTIONS request
+app.options("*", cors(corsOptions));
+
+// ✅ Body parsing middleware
 app.use(fileUploadMiddleware);
-app.use(express.json({ limit: "16Kb" }));
-app.use(express.urlencoded({ extended: true, limit: "16Kb" }));
+app.use(express.json({ limit: "16kb" }));
+app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(cookieParser());
 
-// Error handling middleware for Express
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(err.statusCode || 500).json({
-        success: false,
-        message: err.message || "Internal server error!",
-        errors: err.errors || [],
-    });
-});  
-
+// ✅ Your routes
 import router from "./src/routes/auth.routes.js";
 import userRouter from "./src/routes/userRoutes.js";
 import adminRouter from "./src/routes/adminRoute.js";
@@ -42,5 +54,15 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/feedbacks", feedbackRouter);
 app.use("/api/evidences", evidenceRouter);
 app.use("/api/notifications", notificationRouter);
+
+// ✅ Centralized error handler (keep at the bottom)
+app.use((err, req, res, next) => {
+  console.error("Error:", err.stack);
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || "Internal server error!",
+    errors: err.errors || [],
+  });
+});
 
 export default app;
