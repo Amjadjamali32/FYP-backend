@@ -7,25 +7,22 @@ const app = express();
 
 // ✅ Define allowed origins (You can also use env var here)
 const allowedOrigins = [
-  'https://crime-gpt.netlify.app/',
+  'https://crime-gpt.netlify.app',
   'http://localhost:5173' // optional: for local development
 ];
 
 // ✅ Define CORS options once
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like Postman)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
     } else {
-      return callback(null, false);
+      callback(null, false);
     }
   },
-  credentials: true,
+  credentials: true, // Required for cookies
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 // ✅ Apply CORS middleware only once
