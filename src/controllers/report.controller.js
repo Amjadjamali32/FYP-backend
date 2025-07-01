@@ -196,10 +196,11 @@ const createUserReport = asyncHandler(async (req, res) => {
     // );
 
     const pdfFilePath = path.join(tempDir, `Crime_Report${report.caseNumber}.pdf`);
+    const signatureImageURL = uploadedSignatureImage.url;
     
     await generateReportPDF(
     { ...aiResponse.data, caseNumber: report.caseNumber, policeStationName: report.policeStationName },
-    report.signatureImageUrl,
+    signatureImageURL,
     pdfFilePath
     );
 
@@ -209,6 +210,7 @@ const createUserReport = asyncHandler(async (req, res) => {
       return ApiError(res, 500, "Error uploading report PDF!");
     }
 
+    report.signatureImageUrl = signatureImageURL;
     report.reportPdfUrl = uploadedPDF.url;
     await report.save();
 
