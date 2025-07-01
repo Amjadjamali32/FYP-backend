@@ -15,10 +15,12 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      return callback(null, false);
     }
   },
   credentials: true,
