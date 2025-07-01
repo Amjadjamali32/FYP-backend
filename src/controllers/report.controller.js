@@ -40,7 +40,22 @@ const __dirname = path.dirname(__filename);
 const createUserReport = asyncHandler(async (req, res) => {
   try {
     const { prompt, latitude, longitude } = req.body;
+    
+    // to create a temp directory if it doesn't exist
+    const tempDir = path.join(__dirname, "../../public/temp");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
     const signatureImage = req.files?.signatureImage?.[0]?.path;
+    console.log("Signature image path:", signatureImage);
+    
+    // Check if the signature image exists
+    if (!fs.existsSync(signatureImage)) {
+      console.error("File not found at path:", signatureImage);
+      return ApiError(res, 500, "Signature image not found on server!");
+    }
+
     const evidenceFiles = req.files?.evidenceFiles || []; // Default to empty array if no files
     const parsedLatitude = parseFloat(latitude);
     const parsedLongitude = parseFloat(longitude);
@@ -181,11 +196,6 @@ const createUserReport = asyncHandler(async (req, res) => {
         );
         await report.save();
       }
-    }
-
-    const tempDir = path.join(__dirname, "../../public/temp");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
     }
 
     // Step 8: Generate and upload the PDF (unchanged)
