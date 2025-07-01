@@ -138,7 +138,7 @@ const getUserSingleNotification = asyncHandler(async (req, res) => {
       .status(200)
       .json(new ApiResponse(200, notification, 'Notification fetched successfully'));
   } catch (error) {
-    return ApiError(500, res, "Internal server error!");
+    return ApiError(res, 500, "Internal server error!");
   }
 });
 

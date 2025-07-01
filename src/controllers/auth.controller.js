@@ -237,7 +237,7 @@ const login = asyncHandler(async (req, res) => {
     const cookieOptions = {
         httpOnly: true,
         secure: isProduction, // Secure cookies in production (only sent over HTTPS)
-        sameSite: 'Strict', // Can be 'Strict', 'Lax', or 'None'
+        sameSite: 'none', // Can be 'Strict', 'Lax', or 'None'
     };
 
     return res
@@ -353,12 +353,14 @@ const refreshToken = asyncHandler(async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production', // Set to true in production
             maxAge: 15 * 60 * 1000, // 15 minutes
+            sameSite: 'none', // Can be 'Strict', 'Lax', or 'None'
         });
         
         res.cookie("refreshToken", newRefreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production', // Set to true in production
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            sameSite: 'none', // Can be 'Strict', 'Lax', or 'None'
         });
 
         res

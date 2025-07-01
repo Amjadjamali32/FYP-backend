@@ -11,4 +11,5 @@ evidenceRouter.get("/", verifyJWT, isAdmin, getAllEvidence);
 evidenceRouter.delete("/:id", verifyJWT, isAdmin, deleteEvidence);
 evidenceRouter.delete("/", verifyJWT, isAdmin, deleteAllEvidence);   
 
+
 export default evidenceRouter;

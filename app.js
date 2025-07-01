@@ -25,10 +25,8 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// ✅ Apply CORS middleware only once
+// Apply CORS middleware only once
 app.use(cors(corsOptions));
-
-// ✅ Handle preflight OPTIONS request
 app.options("*", cors(corsOptions));
 
 // ✅ Body parsing middleware
@@ -36,6 +34,11 @@ app.use(fileUploadMiddleware);
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(cookieParser());
+
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // ✅ Your routes
 import router from "./src/routes/auth.routes.js";

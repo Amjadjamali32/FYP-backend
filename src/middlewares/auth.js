@@ -4,33 +4,47 @@ import { User } from "../models/user.models.js";
 import { ApiError } from "../Utils/ApiErrorResponse.js";
 
 export const verifyJWT = asyncHandler(async (req, res, next) => {
-    try {
-        // Extract token from cookies or Authorization header
-        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer", "");
+  try {
+    // Extract token from cookies or Authorization header
+    const token =
+      req.cookies?.accessToken ||
+      (req.headers.authorization &&
+      req.headers.authorization.split(" ")[0] === "Bearer"
+        ? req.headers.authorization.split(" ")[1]
+        : null);
 
-        // console.log('Token:', token); // Log the token
+    console.log("Token:", token); // Log the token
+    console.log("Authorization:", req.headers.authorization);
+    console.log("Cookies:", req.cookies);
+    console.log("Extracted Token:", token);
 
-        if (!token) {
-            return ApiError(res, 401, "Access denied. No token provided!");
-        }
-
-        // Verify the token
-        const decodedTokenInfo = jwt.verify(token, process.env.JWT_SECRET);
-
-        if (!decodedTokenInfo?._id) {
-            return ApiError(res, 401, "Invalid token! Please login again.");
-        }
-
-        // Fetch the user and exclude sensitive fields
-        const user = await User.findById(decodedTokenInfo._id).select("-password -refreshToken");
-        if (!user) {
-            return ApiError(res, 404, "User not found. Invalid token!");
-        }
-
-        // Attach user to the request object
-        req.user = user;
-        next();
-    } catch (error) {
-        return ApiError(res, error.statusCode || 401, error.message || "Authentication failed!");
+    if (!token) {
+      return ApiError(res, 401, "Access denied. No token provided!");
     }
+
+    // Verify the token
+    const decodedTokenInfo = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (!decodedTokenInfo?._id) {
+      return ApiError(res, 401, "Invalid token! Please login again.");
+    }
+
+    // Fetch the user and exclude sensitive fields
+    const user = await User.findById(decodedTokenInfo._id).select(
+      "-password -refreshToken"
+    );
+    if (!user) {
+      return ApiError(res, 404, "User not found. Invalid token!");
+    }
+
+    // Attach user to the request object
+    req.user = user;
+    next();
+  } catch (error) {
+    return ApiError(
+      res,
+      error.statusCode || 401,
+      error.message || "Authentication failed!"
+    );
+  }
 });
