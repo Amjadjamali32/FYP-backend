@@ -2,7 +2,7 @@ import { User } from '../models/user.models.js';
 import { asyncHandler } from "../Utils/AsyncHandler.js"
 import { ApiError} from "../Utils/ApiErrorResponse.js"
 import { ApiResponse } from "../Utils/ApiSuccessResponse.js"
-import { uploadOnCloudinary } from "../services/cloudinary.js"
+import { uploadOnCloudinaryBuffer } from "../services/cloudinary.js"
 import { sendAccountVerificationEmail, sendLoginSuccessEmail, sendPasswordResetEmail } from "../services/emailServices.js"
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -89,8 +89,8 @@ const registration = asyncHandler(async (req, res) => {
             return ApiError(res, 400, errorMessage);
         }
 
-        const NICImageLocalPath = req.files?.NICImage?.[0]?.path;
-        const profileImageLocalPath = req.files?.profileImage?.[0]?.path;
+        const NICImageLocalPath = req.files?.NICImage?.[0];
+        const profileImageLocalPath = req.files?.profileImage?.[0];
 
         // console.log(NICImageLocalPath, profileImageLocalPath);
 
@@ -106,14 +106,14 @@ const registration = asyncHandler(async (req, res) => {
         const emailVerificationExpiry = Date.now() + 3600000; // 1 hour
 
         // Uploading NIC image to Cloudinary
-        const NICImage = await uploadOnCloudinary(NICImageLocalPath);
+        const NICImage = await uploadOnCloudinaryBuffer(NICImageLocalPath.buffer, NICImageLocalPath.originalname);
 
         if (!NICImage) {
             return ApiError(res, 401, 'NIC image uploading failed!');
         }
 
         // Uploading profile image to Cloudinary
-        const profileImage = await uploadOnCloudinary(profileImageLocalPath);
+        const profileImage = await uploadOnCloudinaryBuffer(profileImageLocalPath?.buffer, profileImageLocalPath?.originalname);
 
         const user = await User.create({
             fullname: fullname.toLowerCase(),

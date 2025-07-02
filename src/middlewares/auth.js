@@ -13,11 +13,6 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
         ? req.headers.authorization.split(" ")[1]
         : null);
 
-    console.log("Token:", token); // Log the token
-    console.log("Authorization:", req.headers.authorization);
-    console.log("Cookies:", req.cookies);
-    console.log("Extracted Token:", token);
-
     if (!token) {
       return ApiError(res, 401, "Access denied. No token provided!");
     }

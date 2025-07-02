@@ -7,7 +7,7 @@ import { asyncHandler } from "../Utils/AsyncHandler.js";
 import { Location } from "../models/location.models.js";
 import axios from "axios";
 import {
-  uploadOnCloudinary,
+  uploadOnCloudinaryBuffer,
   deleteFromCloudinary,
 } from "../services/cloudinary.js";
 import {
@@ -16,7 +16,7 @@ import {
 } from "../services/emailServices.js";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import { generateReportPDF } from "../Utils/pdfGenerator.js";
+import { generateReportPDFBuffer } from "../Utils/pdfGenerator.js";
 import { fileURLToPath } from "url";
 import {
   crimeReportStatusTemplate,
@@ -31,6 +31,7 @@ import {
 import { sendNotifications } from "../Utils/sendNotifications.js";
 import { crimeSeverity, defaultSeverity } from "../config/severityLevel.js";
 import getAdminTokens from "../Utils/getAdminTokens.js";
+import fs from "fs";
 
 // Define __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -40,23 +41,8 @@ const __dirname = path.dirname(__filename);
 const createUserReport = asyncHandler(async (req, res) => {
   try {
     const { prompt, latitude, longitude } = req.body;
-    
-    // to create a temp directory if it doesn't exist
-    const tempDir = path.join(__dirname, "../../public/temp");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const signatureImage = req.files?.signatureImage?.[0]?.path;
-    console.log("Signature image path:", signatureImage);
-    
-    // Check if the signature image exists
-    if (!fs.existsSync(signatureImage)) {
-      console.error("File not found at path:", signatureImage);
-      return ApiError(res, 500, "Signature image not found on server!");
-    }
-
-    const evidenceFiles = req.files?.evidenceFiles || []; // Default to empty array if no files
+    const signatureImage = req.files?.signatureImage?.[0];
+    const evidenceFiles = req.files?.evidenceFiles || [];
     const parsedLatitude = parseFloat(latitude);
     const parsedLongitude = parseFloat(longitude);
 
@@ -111,7 +97,7 @@ const createUserReport = asyncHandler(async (req, res) => {
 
     // Step 2: Sanitize the incident_type (unchanged)
     const sanitizeString = (str) => {
-      return str.replace(/[^a-zA-Z\s]/g, ""); // Remove all non-alphabetic characters and numbers
+      return str.replace(/[^a-zA-Z\s]/g, "");
     };
 
     const sanitizedIncidentType = sanitizeString(
@@ -123,7 +109,10 @@ const createUserReport = asyncHandler(async (req, res) => {
     const severity = crimeSeverity[crimeType] || defaultSeverity;
 
     // Step 4: Upload signature image to Cloudinary (unchanged)
-    const uploadedSignatureImage = await uploadOnCloudinary(signatureImage);
+    const uploadedSignatureImage = await uploadOnCloudinaryBuffer(
+      signatureImage.buffer,
+      signatureImage.originalname
+    );
 
     if (!uploadedSignatureImage) {
       return ApiError(res, 500, "Error uploading signature image!");
@@ -168,8 +157,11 @@ const createUserReport = asyncHandler(async (req, res) => {
       const evidenceDocs = await Promise.all(
         evidenceFiles.map(async (file) => {
           try {
-            const uploadedFile = await uploadOnCloudinary(file.path);
-            if (uploadedFile) {
+            const uploadedFile = await uploadOnCloudinaryBuffer(
+              file.buffer,
+              file.originalname
+            );
+            if (uploadedFile?.url) {
               const evidence = new Evidence({
                 type: uploadedFile.resource_type,
                 evidencefileUrl: uploadedFile.url,
@@ -177,11 +169,12 @@ const createUserReport = asyncHandler(async (req, res) => {
                 reportId: report._id,
                 caseNumber: report.caseNumber,
               });
-              return await evidence.save(); // Save to DB
+              return await evidence.save();
             }
+            return null;
           } catch (err) {
             console.error("Error uploading evidence file:", err);
-            return null; // Handle individual file failures gracefully
+            return null;
           }
         })
       );
@@ -190,6 +183,7 @@ const createUserReport = asyncHandler(async (req, res) => {
       const validEvidenceDocs = evidenceDocs.filter(
         (evidence) => evidence !== null
       );
+
       if (validEvidenceDocs.length > 0) {
         report.evidences.push(
           ...validEvidenceDocs.map((evidence) => evidence._id)
@@ -199,28 +193,21 @@ const createUserReport = asyncHandler(async (req, res) => {
     }
 
     // Step 8: Generate and upload the PDF (unchanged)
-    // const pdfFilePath = path.join(
-    //   __dirname,
-    //   "../../public/temp/",
-    //   `Crime_Report${report.caseNumber}.pdf`
-    // );
-
-    const pdfFilePath = path.join(tempDir, `Crime_Report${report.caseNumber}.pdf`);
-    const signatureImageURL = uploadedSignatureImage.url;
-    
-    await generateReportPDF(
-    { ...aiResponse.data, caseNumber: report.caseNumber, policeStationName: report.policeStationName },
-    signatureImageURL,
-    pdfFilePath
+    const pdfBuffer = await generateReportPDFBuffer(
+      {
+        ...aiResponse.data,
+        caseNumber: report.caseNumber,
+        policeStationName: report.policeStationName,
+      },
+      uploadedSignatureImage.url
     );
 
-    const uploadedPDF = await uploadOnCloudinary(pdfFilePath);
+    const uploadedPDF = await uploadOnCloudinaryBuffer(pdfBuffer, "report.pdf");
 
     if (!uploadedPDF) {
       return ApiError(res, 500, "Error uploading report PDF!");
     }
 
-    report.signatureImageUrl = signatureImageURL;
     report.reportPdfUrl = uploadedPDF.url;
     await report.save();
 
@@ -737,9 +724,11 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
       reportStatus,
       policeStationName,
     } = req.body;
-    const signatureImage = req.files?.signatureImage?.[0]?.path;
+
+    const signatureImage = req.files?.signatureImage?.[0];
     const evidenceFiles = req.files?.evidenceFiles || [];
 
+    // Validate required fields
     if (
       !complainant_name ||
       !complainant_nic ||
@@ -754,26 +743,31 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
       return ApiError(res, 400, "All fields are required!");
     }
 
-    const uploadedSignatureImage = await uploadOnCloudinary(signatureImage);
+    // Upload signature image from buffer
+    const uploadedSignatureImage = await uploadOnCloudinaryBuffer(
+      signatureImage.buffer,
+      signatureImage.originalname
+    );
 
-    if (!uploadedSignatureImage) {
+    if (!uploadedSignatureImage?.url) {
       return ApiError(res, 500, "Error uploading signature image!");
     }
 
+    // Create report
     const report = await Reports.create({
       userId: req.user._id,
-      incident_type: incident_type,
-      incident_description: incident_description,
-      location: location,
+      incident_type,
+      incident_description,
+      location,
       reportedDate: new Date(),
       policeStationName,
       reportedTime: new Date().toLocaleTimeString(),
       userLocation: undefined,
       signatureImageUrl: uploadedSignatureImage.url,
-      reportStatus: "pending",
+      reportStatus,
       caseNumber: uuidv4(),
-      complainant_name: complainant_name,
-      complainant_email: complainant_email,
+      complainant_name,
+      complainant_email,
       nic: complainant_nic,
       reportPdfUrl: "initial url",
     });
@@ -782,11 +776,11 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
       return ApiError(res, 500, "Error creating report!");
     }
 
-    // Upload and save evidence files
+    // Upload evidence files from buffer
     const evidenceDocs = [];
     for (const file of evidenceFiles) {
-      const uploadedFile = await uploadOnCloudinary(file.path);
-      if (uploadedFile) {
+      const uploadedFile = await uploadOnCloudinaryBuffer(file.buffer, file.originalname);
+      if (uploadedFile?.url) {
         const evidence = new Evidence({
           type: uploadedFile.resource_type,
           evidencefileUrl: uploadedFile.url,
@@ -802,11 +796,7 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
 
     await report.save();
 
-    if (!evidenceDocs) {
-      return ApiError(res, 500, "Error uploading evidence files!");
-    }
-
-    // Transform the report object to match the required structure
+    // Prepare PDF data
     const reportData = {
       caseNumber: report.caseNumber,
       policeStationName: report.policeStationName,
@@ -820,17 +810,13 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
       incident_description: report.incident_description,
     };
 
-    // Generate and upload the PDF
-    const pdfFilePath = path.join(
-      __dirname,
-      "../../public/temp/",
-      `Crime_Report${report.caseNumber}.pdf`
-    );
-    await generateReportPDF(reportData, report.signatureImageUrl, pdfFilePath);
+    // Generate PDF buffer
+    const pdfBuffer = await generateReportPDFBuffer(reportData, report.signatureImageUrl);
 
-    const uploadedPDF = await uploadOnCloudinary(pdfFilePath);
+    // Upload PDF buffer
+    const uploadedPDF = await uploadOnCloudinaryBuffer(pdfBuffer, `Crime_Report_${report.caseNumber}.pdf`);
 
-    if (!uploadedPDF) {
+    if (!uploadedPDF?.url) {
       return ApiError(res, 500, "Error uploading report PDF!");
     }
 
@@ -844,34 +830,34 @@ const addNewAdminReport = asyncHandler(async (req, res) => {
       report.caseNumber
     );
 
-    // Send notification to the user and admins
+    // Send notification to user and admins
     const { title, body } = addedNewReportByAdminNotificationTemplate(
       report.caseNumber
     );
-    const userToken = req.user.fcmToken; // FCM token of the user who created the report
-    const adminTokens = getAdminTokens(); // FCM tokens of all admins
+    const userToken = req.user.fcmToken;
+    const adminTokens = await getAdminTokens(); 
     const data = { caseNumber: report.caseNumber, reportId: report._id };
 
     await sendNotifications(
-      req.user._id, // User ID
-      userToken, // User FCM token
-      adminTokens, // Admin FCM tokens
+      req.user._id,
+      userToken,
+      adminTokens,
       title,
       body,
       data,
-      "both" // Send to both user and admins
+      "both"
     );
 
     return res
       .status(201)
       .json(new ApiResponse(200, report, "Report added successfully"));
   } catch (error) {
-    console.log(error);
+    console.error("Error in addNewAdminReport:", error);
     return ApiError(res, 500, "Internal Server Error!");
   }
 });
 
-// update a report by admin ( Remaining )
+// Update an existing report by admin
 const updateAdminReport = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
@@ -884,9 +870,10 @@ const updateAdminReport = asyncHandler(async (req, res) => {
       complainant_name,
       complainant_email,
     } = req.body;
-    const signatureImage = req.files?.signatureImage?.[0]?.path;
 
-    // Find the report to update and populate the userId field to get user details
+    const signatureImage = req.files?.signatureImage?.[0];
+
+    // Fetch existing report
     const existingReport = await Reports.findById(id);
     if (!existingReport) {
       return ApiError(res, 404, "Report not found!");
@@ -895,7 +882,6 @@ const updateAdminReport = asyncHandler(async (req, res) => {
     // Initialize update object
     const updateFields = {};
 
-    // Update only if the new value is different
     if (nic && nic.trim() !== existingReport.nic) updateFields.nic = nic.trim();
     if (
       complainant_name &&
@@ -922,15 +908,20 @@ const updateAdminReport = asyncHandler(async (req, res) => {
     if (location && location !== existingReport.location)
       updateFields.location = location;
 
-    // Handle signature image update
-    if (signatureImage && signatureImage.length > 0) {
-      const uploadedSignature = await uploadOnCloudinary(signatureImage);
-      if (!uploadedSignature) {
+    // Handle signature image update (buffer)
+    if (signatureImage && signatureImage.buffer) {
+      const uploadedSignature = await uploadOnCloudinaryBuffer(
+        signatureImage.buffer,
+        signatureImage.originalname
+      );
+
+      if (!uploadedSignature?.url) {
         return ApiError(res, 500, "Error uploading signature image!");
       }
+
       updateFields.signatureImageUrl = uploadedSignature.url;
 
-      // Delete old signature image from Cloudinary
+      // Delete old signature image
       if (existingReport.signatureImageUrl) {
         const oldSignatureId = existingReport.signatureImageUrl
           .split("/")
@@ -940,18 +931,18 @@ const updateAdminReport = asyncHandler(async (req, res) => {
       }
     }
 
-    // Update the report in the database with the fields that are actually updated
-    const updatedReport = await Reports.findOneAndUpdate(
-      { _id: id },
-      { $set: updateFields }, // Apply only updated fields
+    // Update report
+    const updatedReport = await Reports.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
       { new: true, runValidators: true }
     );
 
     if (!updatedReport) {
-      return ApiError(res, 404, "Error updating the report!");
+      return ApiError(res, 500, "Error updating the report!");
     }
 
-    // Transform the updated report object to match the required structure
+    //  Prepare report data for PDF
     const mergedReportData = {
       caseNumber: updatedReport.caseNumber,
       policeStationName:
@@ -970,48 +961,45 @@ const updateAdminReport = asyncHandler(async (req, res) => {
         existingReport.incident_description,
     };
 
-    // Generate a new PDF using the merged data and signature image
-    const pdfFilePath = path.join(
-      __dirname,
-      "../../public/temp/",
-      `Crime_Report${updatedReport.caseNumber}.pdf`
-    );
-    await generateReportPDF(
+    // Generate new PDF buffer and upload
+    const pdfBuffer = await generateReportPDFBuffer(
       mergedReportData,
-      updatedReport.signatureImageUrl || existingReport.signatureImageUrl,
-      pdfFilePath
+      updatedReport.signatureImageUrl || existingReport.signatureImageUrl
     );
 
-    // Upload the new PDF to Cloudinary
-    const uploadedPDF = await uploadOnCloudinary(pdfFilePath);
+    const uploadedPDF = await uploadOnCloudinaryBuffer(
+      pdfBuffer,
+      `Crime_Report_${updatedReport.caseNumber}.pdf`
+    );
 
-    if (!uploadedPDF) {
+    if (!uploadedPDF?.url) {
       return ApiError(res, 500, "Error uploading report PDF!");
     }
 
-    // Update the report's PDF URL in the database
     updatedReport.reportPdfUrl = uploadedPDF.url;
     await updatedReport.save();
 
-    // Send notification to the user and admins
+    // Send notifications
     const { title, body } = updatedReportByAdminNotificationTemplate(
       updatedReport.caseNumber
     );
-    const userToken = req.user.fcmToken; // FCM token of the user who created the report
-    const adminTokens = getAdminTokens(); // FCM tokens of all admins
+
+    const userToken = req.user.fcmToken;
+    const adminTokens = await getAdminTokens(); // Ensure this is async
+
     const data = {
       caseNumber: updatedReport.caseNumber,
       reportId: updatedReport._id,
     };
 
     await sendNotifications(
-      req.user._id, // User ID
-      userToken, // User FCM token
-      adminTokens, // Admin FCM tokens
+      req.user._id,
+      userToken,
+      adminTokens,
       title,
       body,
       data,
-      "both" // Send to both user and admins
+      "both"
     );
 
     return res

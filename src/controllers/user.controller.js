@@ -3,7 +3,7 @@ import { Feedback } from "../models/feedback.models.js"
 import { Evidence } from "../models/evidence.models.js"
 import { Notifications } from "../models/notification.models.js"
 import { Reports } from '../models/report.model.js';
-import { uploadOnCloudinary, deleteFromCloudinary} from "../services/cloudinary.js"
+import { uploadOnCloudinaryBuffer, deleteFromCloudinary} from "../services/cloudinary.js"
 import { ApiError } from "../Utils/ApiErrorResponse.js"
 import { ApiResponse } from "../Utils/ApiSuccessResponse.js"
 import { asyncHandler } from "../Utils/AsyncHandler.js"
@@ -43,61 +43,62 @@ const updatePassword = asyncHandler(async (req, res) => {
 
 // updateAccountDetails
 const updateAccountDetails = asyncHandler(async (req, res) => {
-    const { fullname, email, NICNumber } = req.body;
-    const profileImage = req.files?.profileImage?.[0]?.path;
+  const { fullname, email, NICNumber } = req.body;
+  const profileImage = req.files?.profileImage?.[0];
 
-    try {
-        // Fetch the user
-        const user = await User.findById(req.user?._id);
+  try {
+    // Fetch the user
+    const user = await User.findById(req.user?._id);
 
-        if (!user) {
-            return ApiError(res, 404, "User not found!");
-        }
-
-        // // Update profile image if provided
-        let updatedProfileImageUrl = user.profileImage;
-        if (profileImage) {
-            if (user.profileImage) {
-                // Delete old image from Cloudinary
-                const oldImagePublicId = user.profileImage.split("/").pop().split(".")[0];
-                try {
-                    await deleteFromCloudinary(oldImagePublicId);
-                } catch (error) {
-                    console.error("Error deleting old image from Cloudinary:", error.message);
-                }
-            }
-
-            // Upload new image
-            const uploadedImage = await uploadOnCloudinary(profileImage);
-
-            if (!uploadedImage?.url) {
-                return ApiError(res, 500, "Error while uploading profile image!");
-            }
-
-            updatedProfileImageUrl = uploadedImage.url;
-        }
-
-        // Update user details
-        const updatedUser = await User.findByIdAndUpdate(
-            req.user._id,
-            {
-                $set: {
-                    fullname: fullname || user.fullname,
-                    email: email || user.email,
-                    profileImage: updatedProfileImageUrl,
-                    NICNumber: NICNumber || user.NICNumber,
-                },
-            },
-            { new: true }
-        ).select("-password -refreshToken");
-
-        return res
-            .status(200)
-            .json(new ApiResponse(200, updatedUser, "Account details updated successfully"));
-    } catch (error) {
-        console.error("Error updating account details:", error.message);
-        return ApiError(res, 500, "Internal Server Error");
+    if (!user) {
+      return ApiError(res, 404, "User not found!");
     }
+
+    let updatedProfileImageUrl = user.profileImage;
+
+    // ✅ Update profile image if provided
+    if (profileImage) {
+      if (user.profileImage) {
+        // Delete old image from Cloudinary
+        const oldImagePublicId = user.profileImage.split("/").pop().split(".")[0];
+        try {
+          await deleteFromCloudinary(oldImagePublicId);
+        } catch (error) {
+          console.error("Error deleting old image from Cloudinary:", error.message);
+        }
+      }
+
+      // ✅ Upload new image using buffer function
+      const uploadedImage = await uploadOnCloudinaryBuffer(profileImage.buffer, profileImage.originalname);
+
+      if (!uploadedImage?.url) {
+        return ApiError(res, 500, "Error while uploading profile image!");
+      }
+
+      updatedProfileImageUrl = uploadedImage.url;
+    }
+
+    // ✅ Update user details
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $set: {
+          fullname: fullname || user.fullname,
+          email: email || user.email,
+          profileImage: updatedProfileImageUrl,
+          NICNumber: NICNumber || user.NICNumber,
+        },
+      },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    return res.status(200).json(
+      new ApiResponse(200, updatedUser, "Account details updated successfully")
+    );
+  } catch (error) {
+    console.error("Error updating account details:", error.message);
+    return ApiError(res, 500, "Internal Server Error");
+  }
 });
 
 // userDashboard 
@@ -198,87 +199,87 @@ const deleteAllUsers = asyncHandler(async (req, res) => {
         }
 });
 
-// Update a user by ID (Admin Only)
+// update  user  (Admin Only)
 const updateUser = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { fullname, email, mobile, gender, password, role } = req.body; 
+  const { id } = req.params;
+  const { fullname, email, mobile, gender, password, role } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return ApiError(res, 400, 'Invalid user ID format!');
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return ApiError(res, 400, "Invalid user ID format!");
+  }
+
+  try {
+    const user = await User.findById(id);
+    if (!user) {
+      return ApiError(res, 404, "User not found!");
     }
 
-    try {
-        const user = await User.findById(id);
-        if (!user) {
-            return ApiError(res, 404, 'User not found!');
-        }
+    const updateData = {};
 
-        // Initialize the updateData object
-        const updateData = {};
+    if (fullname) updateData.fullname = fullname;
+    if (email) updateData.email = email;
+    if (mobile) updateData.mobile = mobile;
+    if (gender) updateData.gender = gender;
+    if (role) updateData.role = role;
 
-        if (fullname) updateData.fullname = fullname;
-        if (email) updateData.email = email;
-        if (mobile) updateData.mobile = mobile;
-        if (gender) updateData.gender = gender;
-        if (role) updateData.role = role;
-
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            updateData.password = hashedPassword;
-        }
-
-        const profileImageLocalPath = req.files?.profileImage?.[0]?.path;
-        if (profileImageLocalPath) {
-            if (user.profileImage) {
-                const oldImagePublicId = user.profileImage.split('/').pop().split('.')[0];
-                try {
-                    await deleteFromCloudinary(oldImagePublicId);
-                } catch (error) {
-                    console.error('Error deleting old image from Cloudinary:', error.message);
-                }
-            }
-
-            const updatedProfileImage = await uploadOnCloudinary(profileImageLocalPath);
-            if (!updatedProfileImage?.url) {
-                return ApiError(res, 500, 'Error while uploading profile image!');
-            }
-            updateData.profileImage = updatedProfileImage.url; 
-        }
-
-        const nicImageLocalPath = req.files?.NICImage?.[0]?.path;
-        if (nicImageLocalPath) {
-            if (user.NICImage) {
-                const oldNICImagePublicId = user.NICImage.split('/').pop().split('.')[0];
-                try {
-                    await deleteFromCloudinary(oldNICImagePublicId); 
-                } catch (error) {
-                    console.error('Error deleting old NIC image from Cloudinary:', error.message);
-                }
-            }
-
-            const updatedNICImage = await uploadOnCloudinary(nicImageLocalPath);
-            if (!updatedNICImage?.url) {
-                return ApiError(res, 500, 'Error while uploading NIC image!');
-            }
-            updateData.NICImage = updatedNICImage.url;
-        }
-
-        const updatedUser = await User.findByIdAndUpdate(
-            id,
-            { $set: updateData },
-            { new: true, runValidators: true }
-        ).select('-password -refreshToken'); 
-
-        if (!updatedUser) {
-            return ApiError(res, 500, 'Error updating user!');
-        }
-
-        return res
-            .status(200)
-            .json(new ApiResponse(200, updatedUser, 'User updated successfully'));
-    } catch (error) {
-        return ApiError(res, 500, error.message);
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateData.password = hashedPassword;
     }
+
+    // Handle profile image upload (via buffer)
+    const profileImage = req.files?.profileImage?.[0];
+    if (profileImage) {
+      if (user.profileImage) {
+        const oldImagePublicId = user.profileImage.split("/").pop().split(".")[0];
+        try {
+          await deleteFromCloudinary(oldImagePublicId);
+        } catch (error) {
+          console.error("Error deleting old image from Cloudinary:", error.message);
+        }
+      }
+
+      const uploadedProfileImage = await uploadOnCloudinaryBuffer(profileImage.buffer, profileImage.originalname);
+      if (!uploadedProfileImage?.url) {
+        return ApiError(res, 500, "Error while uploading profile image!");
+      }
+      updateData.profileImage = uploadedProfileImage.url;
+    }
+
+    // Handle NIC image upload (via buffer)
+    const nicImage = req.files?.NICImage?.[0];
+    if (nicImage) {
+      if (user.NICImage) {
+        const oldNICImagePublicId = user.NICImage.split("/").pop().split(".")[0];
+        try {
+          await deleteFromCloudinary(oldNICImagePublicId);
+        } catch (error) {
+          console.error("Error deleting old NIC image from Cloudinary:", error.message);
+        }
+      }
+
+      const uploadedNICImage = await uploadOnCloudinaryBuffer(nicImage.buffer, nicImage.originalname);
+      if (!uploadedNICImage?.url) {
+        return ApiError(res, 500, "Error while uploading NIC image!");
+      }
+      updateData.NICImage = uploadedNICImage.url;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password -refreshToken");
+
+    if (!updatedUser) {
+      return ApiError(res, 500, "Error updating user!");
+    }
+
+    return res.status(200).json(new ApiResponse(200, updatedUser, "User updated successfully"));
+  } catch (error) {
+    console.error("Error updating user:", error.message);
+    return ApiError(res, 500, "Internal Server Error");
+  }
 });
 
 // Get all users with optional search and pagination (Admin Only) (no search for nic)
