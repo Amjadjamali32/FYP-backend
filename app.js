@@ -8,7 +8,7 @@ const app = express();
 // ✅ Define allowed origins (You can also use env var here)
 const allowedOrigins = [
   'https://crime-gpt.netlify.app',
-  'https://crimegpt-frontend-zdz6-cvx79unvk-amjadjamali32s-projects.vercel.app'
+  'https://crimegpt-frontend.vercel.app'
 ];
 
 // ✅ Define CORS options once
