@@ -8,7 +8,8 @@ const app = express();
 // ✅ Define allowed origins (You can also use env var here)
 const allowedOrigins = [
   'https://crime-gpt.netlify.app',
-  'https://crimegpt-frontend.vercel.app'
+  'https://crimegpt-frontend.vercel.app',
+  'http://localhost:5173',
 ];
 
 // ✅ Define CORS options once
@@ -21,7 +22,7 @@ const corsOptions = {
     }
   },
   credentials: true, // Required for cookies
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
